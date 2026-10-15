@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CAMT.054 > PDF</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: #1d2935;
+      background: #eef2f5;
+    }
+
+    * { box-sizing: border-box; }
+
+    body { margin: 0; padding: 28px 18px; }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      background: #fff;
+      border: 1px solid #d8e0e7;
+      border-radius: 12px;
+      box-shadow: 0 8px 28px #18344b12;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 28px 32px;
+      color: #fff;
+      background: #183c59;
+    }
+
+    h1 { margin: 0 0 8px; font-size: 25px; }
+    header p { margin: 0; color: #d6e4ef; line-height: 1.5; }
+    section { padding: 24px 32px; }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      align-items: end;
+    }
+
+    label { display: block; font-weight: 600; font-size: 14px; }
+    input[type="month"] { width: 100%; margin-top: 7px; }
+
+    input[type="month"], button {
+      min-height: 42px;
+      border: 1px solid #b9c7d3;
+      border-radius: 6px;
+      padding: 9px 12px;
+      font: inherit;
+      background: #fff;
+    }
+
+    button {
+      cursor: pointer;
+      color: #fff;
+      font-weight: 600;
+      border-color: #1c5b82;
+      background: #1c5b82;
+    }
+
+    button.secondary { color: #1c4d6c; border-color: #b9c7d3; background: #fff; }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+
+    .check-row {
+      display: flex;
+      gap: 9px;
+      align-items: flex-start;
+      padding: 12px;
+      border: 1px solid #d8e0e7;
+      border-radius: 6px;
+      font-weight: 400;
+      line-height: 1.45;
+    }
+
+    .check-row input { margin-top: 3px; }
+    .folder, .hint { color: #526273; font-size: 13px; line-height: 1.5; }
+    .folder { margin-top: 18px; overflow-wrap: anywhere; }
+    .hint { margin: 14px 0 0; }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+    .status { padding: 13px 16px; border-radius: 6px; background: #f1f5f8; line-height: 1.5; }
+    .status.error { color: #842e22; background: #fff0ed; }
+    .status.success { color: #205c39; background: #edf8f0; }
+
+    #report { border-top: 1px solid #d8e0e7; }
+    #report[hidden] { display: none; }
+    .report-head { margin-bottom: 18px; }
+    .report-head h2 { margin: 0 0 6px; font-size: 21px; }
+    .report-meta { color: #526273; font-size: 13px; }
+    .table-wrap { overflow-x: auto; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td {
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+      border: 1px solid #d8e0e7;
+      overflow-wrap: anywhere;
+    }
+
+    th { color: #183c59; background: #edf2f6; }
+    td.amount { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+    #report-actions { margin-top: 18px; }
+
+    @media (max-width: 620px) {
+      body { padding: 0; }
+      main { border: 0; border-radius: 0; }
+      header, section { padding: 22px 18px; }
+    }
+
+    @media print {
+      @page { size: A4 portrait; margin: 10mm; }
+      body { padding: 0; background: #fff; }
+      main { max-width: none; border: 0; border-radius: 0; box-shadow: none; }
+      header, #setup, #report-actions { display: none !important; }
+      #report { display: block !important; border: 0; padding: 0; }
+      .report-head { margin-bottom: 12px; }
+      table { width: 100%; table-layout: fixed; font-size: 7pt; }
+      th, td { padding: 4px; overflow-wrap: anywhere; }
+      tr { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>CAMT.054 – månadsrapport</h1>
+      <p>Välj en mapp med CAMT-filer. Rapporten kan skrivas ut eller sparas som PDF.</p>
+    </header>
+
+    <section id="setup">
+      <div class="controls">
+        <button id="choose-folder" type="button">Välj mapp</button>
+        <label>
+          Rapportmånad
+          <input id="month" type="month">
+        </label>
+        <label class="check-row">
+          <input id="include-processed" type="checkbox">
+          <span>Läs även redan loggade filer (komplett rapport för månaden)</span>
+        </label>
+      </div>
+      <div id="folder-name" class="folder">Ingen mapp vald.</div>
+      <p class="hint">
+        Som standard läses endast nya eller ändrade filer. För en komplett månadsrapport,
+        även med tidigare behandlade filer, markera rutan ovan. HTML-sidans egen logg,
+        <code>processed_html.log</code>, sparas i den valda mappen.
+      </p>
+      <div class="actions">
+        <button id="load-files" type="button" class="secondary" disabled>Läs in filer</button>
+        <button id="create-report" type="button" disabled>Visa månadsrapport</button>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite">Välj en mapp för att börja.</p>
+    </section>
+
+    <section id="report" hidden>
+      <div class="report-head">
+        <h2 id="report-title"></h2>
+        <div id="report-meta" class="report-meta"></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Datum</th>
+              <th>Belopp</th>
+              <th>Typ</th>
+              <th>Konto</th>
+              <th>Motpart</th>
+              <th>Referens / meddelande</th>
+              <th>Källfil</th>
+            </tr>
+          </thead>
+          <tbody id="transactions"></tbody>
+        </table>
+      </div>
+      <div id="report-actions" class="actions">
+        <button id="print-report" type="button">Skriv ut / spara som PDF</button>
+        <button id="mark-processed" type="button" class="secondary" disabled>
+          Markera nya filer som behandlade
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+
+    const LOG_NAME = "processed_html.log";
+    const FILE_EXTENSIONS = new Set([".xml", ".camt"]);
+    const folderButton = document.getElementById("choose-folder");
+    const loadButton = document.getElementById("load-files");
+    const reportButton = document.getElementById("create-report");
+    const includeProcessed = document.getElementById("include-processed");
+    const monthInput = document.getElementById("month");
+    const statusBox = document.getElementById("status");
+    const reportSection = document.getElementById("report");
+    const reportTitle = document.getElementById("report-title");
+    const reportMeta = document.getElementById("report-meta");
+    const transactionsBody = document.getElementById("transactions");
+    const markButton = document.getElementById("mark-processed");
+
+    let directoryHandle = null;
+    let logHandle = null;
+    let logLines = [];
+    let processedRecords = [];
+    let loadedTransactions = [];
+    let pendingFiles = [];
+    let reportReady = false;
+
+    const today = new Date();
+    monthInput.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+
+    function setStatus(message, kind = "") {
+      statusBox.textContent = message;
+      statusBox.className = `status ${kind}`.trim();
+    }
+
+    function localName(element) {
+      return element.localName || element.nodeName.split(":").pop();
+    }
+
+    function descendants(element, name) {
+      return Array.from(element.getElementsByTagName("*"))
+        .filter((child) => localName(child) === name);
+    }
+
+    function firstDescendant(element, name) {
+      return descendants(element, name)[0] || null;
+    }
+
+    function nodeText(element) {
+      return element ? element.textContent.trim().replace(/\s+/g, " ") : "";
+    }
+
+    function firstText(element, ...names) {
+      for (const name of names) {
+        const value = nodeText(firstDescendant(element, name));
+        if (value) return value;
+      }
+      return "";
+    }
+
+    function dateValue(entry, containerName) {
+      const container = firstDescendant(entry, containerName);
+      return container ? firstText(container, "Dt", "DtTm") : "";
+    }
+
+    function accountDescription(notification) {
+      const account = firstDescendant(notification, "Acct");
+      if (!account) return "";
+      for (const name of ["IBAN", "Othr"]) {
+        const identifier = firstDescendant(account, name);
+        if (identifier && nodeText(identifier)) return nodeText(identifier);
+      }
+      return firstText(account, "Id", "Nm");
+    }
+
+    function partyName(transaction, partyType) {
+      const parties = firstDescendant(transaction, "RltdPties");
+      const scope = parties || transaction;
+      const party = firstDescendant(scope, partyType);
+      return party ? firstText(party, "Nm") : "";
+    }
+
+    function remittanceText(transaction) {
+      const remittance = firstDescendant(transaction, "RmtInf");
+      if (!remittance) return "";
+      const unstructured = descendants(remittance, "Ustrd").map(nodeText).filter(Boolean);
+      if (unstructured.length) return unstructured.join(" / ");
+      return nodeText(remittance);
+    }
+
+    function amountText(entry, transaction) {
+      const amount = firstDescendant(transaction, "TxAmt") || firstDescendant(entry, "Amt");
+      if (!amount) return "";
+      const currency = amount.getAttribute("Ccy") || "";
+      return `${nodeText(amount)} ${currency}`.trim();
+    }
+
+    function getMonth(entry) {
+      const bookingDate = dateValue(entry, "BookgDt");
+      const valueDate = dateValue(entry, "ValDt");
+      const date = (bookingDate || valueDate).slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.slice(0, 7) : "";
+    }
+
+    function displayDate(value) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+      return match ? `${match[3]}.${match[2]}.${match[1]}` : value;
+    }
+
+    function basename(path) {
+      return String(path || "").split(/[\\/]/).pop().toLocaleLowerCase();
+    }
+
+    function fileModifiedNs(file) {
+      return `${Math.trunc(file.lastModified)}000000`;
+    }
+
+    function isProcessed(file) {
+      return processedRecords.some((record) => {
+        if (record.status !== "success" || Number(record.size) !== file.size) return false;
+        let recordMillis;
+        try {
+          recordMillis = BigInt(record.mtime_ns) / 1000000n;
+        } catch {
+          return false;
+        }
+        return recordMillis === BigInt(Math.trunc(file.lastModified)) &&
+          basename(record.path) === file.name.toLocaleLowerCase();
+      });
+    }
+
+    async function ensureReadWritePermission(handle) {
+      const options = { mode: "readwrite" };
+      if (await handle.queryPermission(options) === "granted") return true;
+      return (await handle.requestPermission(options)) === "granted";
+    }
+
+    async function loadLog() {
+      logLines = [];
+      processedRecords = [];
+      try {
+        logHandle = await directoryHandle.getFileHandle(LOG_NAME);
+        const contents = await (await logHandle.getFile()).text();
+        logLines = contents.split(/\r?\n/).filter(Boolean);
+        for (const line of logLines) {
+          try {
+            const preciseLine = line.replace(
+              /("mtime_ns"\s*:\s*)(\d+)/,
+              '$1"$2"',
+            );
+            processedRecords.push(JSON.parse(preciseLine));
+          } catch {
+            setStatus(`Ogiltig rad i ${LOG_NAME} ignorerades; övriga loggrader behålls.`, "error");
+          }
+        }
+      } catch (error) {
+        if (error.name !== "NotFoundError") throw error;
+        logHandle = await directoryHandle.getFileHandle(LOG_NAME, { create: true });
+      }
+    }
+
+    function extractFileTransactions(xmlDocument, fileName) {
+      const parserError = xmlDocument.querySelector("parsererror");
+      if (parserError) throw new Error("Filen innehåller ogiltig XML.");
+
+      const notifications = descendants(xmlDocument, "Ntfctn");
+      const scopes = notifications.length ? notifications : [xmlDocument.documentElement];
+      const result = [];
+
+      for (const notification of scopes) {
+        const account = accountDescription(notification);
+        for (const entry of descendants(notification, "Ntry")) {
+          const txDetails = descendants(entry, "TxDtls");
+          const transactions = txDetails.length ? txDetails : [entry];
+          const indicator = firstText(entry, "CdtDbtInd");
+          const direction = indicator === "CRDT" ? "Kredit"
+            : indicator === "DBIT" ? "Debet" : indicator;
+          const bookingDate = dateValue(entry, "BookgDt");
+          const valueDate = dateValue(entry, "ValDt");
+          const date = (bookingDate || valueDate).slice(0, 10);
+
+          for (const transaction of transactions) {
+            const counterparty = indicator === "DBIT"
+              ? partyName(transaction, "Cdtr") || partyName(transaction, "Dbtr")
+              : partyName(transaction, "Dbtr") || partyName(transaction, "Cdtr");
+            const references = [
+              firstText(transaction, "EndToEndId"),
+              firstText(transaction, "TxId"),
+              remittanceText(transaction),
+            ].filter(Boolean);
+            result.push({
+              month: getMonth(entry),
+              date,
+              amount: amountText(entry, transaction),
+              direction,
+              account,
+              counterparty,
+              reference: [...new Set(references)].join(" · "),
+              source: fileName,
+            });
+          }
+        }
+      }
+      return result;
+    }
+
+    async function chooseFolder() {
+      if (!window.showDirectoryPicker) {
+        setStatus(
+          "Mappval kräver en nyare version av Microsoft Edge eller Google Chrome. Öppna sidan i en sådan webbläsare.",
+          "error",
+        );
+        return;
+      }
+      try {
+        directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+        if (!await ensureReadWritePermission(directoryHandle)) {
+          directoryHandle = null;
+          throw new Error("Webbläsaren fick inte behörighet att läsa och skriva i mappen.");
+        }
+        document.getElementById("folder-name").textContent = `Vald mapp: ${directoryHandle.name}`;
+        loadButton.disabled = false;
+        reportButton.disabled = true;
+        reportSection.hidden = true;
+        loadedTransactions = [];
+        pendingFiles = [];
+        reportReady = false;
+        markButton.disabled = true;
+        await loadLog();
+        setStatus("Mappen är vald. Läs in filerna för att fortsätta.", "success");
+      } catch (error) {
+        if (error.name !== "AbortError") setStatus(error.message, "error");
+      }
+    }
+
+    async function loadFiles() {
+      if (!directoryHandle) return;
+      loadButton.disabled = true;
+      reportButton.disabled = true;
+      reportSection.hidden = true;
+      reportReady = false;
+      markButton.disabled = true;
+      loadedTransactions = [];
+      pendingFiles = [];
+      let fileCount = 0;
+      let skippedCount = 0;
+      const errors = [];
+      try {
+        await loadLog();
+        for await (const [name, handle] of directoryHandle.entries()) {
+          const extension = name.includes(".") ? name.slice(name.lastIndexOf(".")).toLowerCase() : "";
+          if (handle.kind !== "file" || !FILE_EXTENSIONS.has(extension) || name === LOG_NAME) continue;
+          fileCount += 1;
+          const file = await handle.getFile();
+          if (!includeProcessed.checked && isProcessed(file)) {
+            skippedCount += 1;
+            continue;
+          }
+          try {
+            const xml = new DOMParser().parseFromString(await file.text(), "application/xml");
+            const transactions = extractFileTransactions(xml, name);
+            loadedTransactions.push(...transactions);
+            pendingFiles.push({ file, name });
+          } catch (error) {
+            errors.push(`${name}: ${error.message}`);
+          }
+        }
+        reportButton.disabled = false;
+        const message = `${fileCount} CAMT-fil(er) hittades; ${skippedCount} redan behandlade hoppades över; ` +
+          `${pendingFiles.length} nya/valda fil(er) lästes in.` +
+          (errors.length ? ` ${errors.length} fil(er) kunde inte läsas: ${errors.join(" | ")}` : "");
+        setStatus(message, errors.length ? "error" : "success");
+      } catch (error) {
+        setStatus(`Kunde inte läsa mappen eller loggen: ${error.message}`, "error");
+      } finally {
+        loadButton.disabled = false;
+      }
+    }
+
+    function createReport() {
+      const month = monthInput.value;
+      if (!month) {
+        setStatus("Välj en rapportmånad först.", "error");
+        return;
+      }
+      const rows = loadedTransactions.filter((transaction) => transaction.month === month);
+      reportTitle.textContent = `CAMT.054 – transaktioner ${month}`;
+      document.title = `CAMT.054 månadsrapport ${month}`;
+      reportMeta.textContent =
+        `${rows.length} transaktion(er) från ${pendingFiles.length} inläst(a) fil(er). ` +
+        `Källa: ${directoryHandle.name}`;
+      transactionsBody.replaceChildren();
+
+      if (!rows.length) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 7;
+        cell.textContent = `Inga transaktioner hittades för ${month}.`;
+        row.append(cell);
+        transactionsBody.append(row);
+      } else {
+        for (const transaction of rows) {
+          const row = document.createElement("tr");
+          const values = [
+            displayDate(transaction.date),
+            transaction.amount,
+            transaction.direction,
+            transaction.account,
+            transaction.counterparty,
+            transaction.reference,
+            transaction.source,
+          ];
+          values.forEach((value, index) => {
+            const cell = document.createElement("td");
+            cell.textContent = value || "—";
+            if (index === 1) cell.className = "amount";
+            row.append(cell);
+          });
+          transactionsBody.append(row);
+        }
+      }
+
+      reportSection.hidden = false;
+      reportReady = true;
+      markButton.disabled = pendingFiles.length === 0;
+      reportSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      setStatus(
+        `Rapporten är klar. Spara/skriv ut PDF:en och markera sedan filerna som behandlade.`,
+        "success",
+      );
+    }
+
+    async function markProcessed() {
+      if (!directoryHandle || !reportReady || pendingFiles.length === 0) return;
+      markButton.disabled = true;
+      try {
+        if (!await ensureReadWritePermission(directoryHandle)) {
+          throw new Error("Skrivbehörighet till den valda mappen saknas.");
+        }
+        const recordsToAppend = pendingFiles.map(({ file, name }) => ({
+          timestamp: new Date().toISOString(),
+          status: "success",
+          path: name,
+          size: file.size,
+          mtime_ns: fileModifiedNs(file),
+          output: `monthly_report_${monthInput.value}.pdf`,
+          processor: "camt054_report.html",
+        }));
+        const newLines = recordsToAppend.map((record) => JSON.stringify(record));
+        const updatedContents = [...logLines, ...newLines].join("\n") + "\n";
+        const writable = await logHandle.createWritable();
+        await writable.write(updatedContents);
+        await writable.close();
+        logLines.push(...newLines);
+        processedRecords.push(...recordsToAppend);
+        pendingFiles = [];
+        setStatus(`Filerna har markerats som behandlade i ${LOG_NAME}.`, "success");
+      } catch (error) {
+        setStatus(`Kunde inte uppdatera behandlingsloggen: ${error.message}`, "error");
+        markButton.disabled = false;
+      }
+    }
+
+    folderButton.addEventListener("click", chooseFolder);
+    loadButton.addEventListener("click", loadFiles);
+    reportButton.addEventListener("click", createReport);
+    markButton.addEventListener("click", markProcessed);
+    document.getElementById("print-report").addEventListener("click", () => window.print());
+  </script>
+</body>
+</html>
