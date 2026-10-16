@@ -81,6 +81,26 @@
     .folder, .hint { color: #526273; font-size: 13px; line-height: 1.5; }
     .folder { margin-top: 18px; overflow-wrap: anywhere; }
     .hint { margin: 14px 0 0; }
+    .file-selection { margin-top: 20px; }
+    .file-selection[hidden] { display: none; }
+    .file-selection h2 { margin: 0 0 10px; font-size: 18px; }
+    .file-selection-actions { display: flex; gap: 8px; margin-bottom: 10px; }
+    .file-selection-actions button { min-height: 34px; padding: 6px 10px; }
+    .file-list { display: grid; gap: 6px; max-height: 320px; overflow-y: auto; }
+    .file-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 9px 10px;
+      border: 1px solid #d8e0e7;
+      border-radius: 6px;
+      font-weight: 400;
+      line-height: 1.4;
+    }
+    .file-row input { margin-top: 3px; }
+    .file-details { min-width: 0; }
+    .file-name { font-weight: 600; overflow-wrap: anywhere; }
+    .file-meta { color: #526273; font-size: 12px; }
 
     .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
     .status { padding: 13px 16px; border-radius: 6px; background: #f1f5f8; line-height: 1.5; }
@@ -96,11 +116,11 @@
 
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     col.date { width: 9%; }
-    col.amount { width: 13%; }
+    col.amount { width: 9%; }
     col.direction { width: 6%; }
     col.account { width: 15%; }
     col.counterparty { width: 15%; }
-    col.reference { width: 23%; }
+    col.reference { width: 27%; }
     col.source { width: 19%; }
     th, td {
       padding: 9px 10px;
@@ -113,7 +133,9 @@
     th { color: #183c59; background: #edf2f6; }
     td.date, td.amount, td.account { white-space: nowrap; }
     td.amount { text-align: right; font-variant-numeric: tabular-nums; }
+    td.counterparty { white-space: pre-line; }
     td.reference { white-space: pre-line; }
+    tr.entry-info-row { background: #f4f6f8; font-style: italic; }
     #report-actions { margin-top: 18px; }
 
     @media (max-width: 620px) {
@@ -138,7 +160,7 @@
 <body>
   <main>
     <header>
-      <h1>CAMT.054 – månadsrapport</h1>
+      <h1>CAMT.054 – rapportgenerator</h1>
       <p>Välj en mapp med CAMT-filer. Rapporten kan skrivas ut eller sparas som PDF.</p>
     </header>
 
@@ -151,20 +173,28 @@
         </label>
         <label class="check-row">
           <input id="include-processed" type="checkbox">
-          <span>Läs även redan loggade filer (komplett rapport för månaden)</span>
+          <span>Markera även redan behandlade filer som valda</span>
         </label>
       </div>
       <div id="folder-name" class="folder">Ingen mapp vald.</div>
       <p class="hint">
-        Som standard läses endast nya eller ändrade filer. För en komplett månadsrapport,
-        även med tidigare behandlade filer, markera rutan ovan. HTML-sidans egen logg,
+        Efter inläsning visas alla CAMT-filer i mappen. Välj vilka som ska ingå i rapporten.
+        Tidigare behandlade filer är omarkerade som standard. HTML-sidans egen logg,
         <code>processed_html.log</code>, sparas i den valda mappen.
       </p>
       <div class="actions">
         <button id="load-files" type="button" class="secondary" disabled>Läs in filer</button>
-        <button id="create-report" type="button" disabled>Visa månadsrapport</button>
+        <button id="create-report" type="button" disabled>Visa rapport</button>
       </div>
       <p id="status" class="status" role="status" aria-live="polite">Välj en mapp för att börja.</p>
+      <div id="file-selection" class="file-selection" hidden>
+        <h2 id="file-selection-title">Filer i mappen</h2>
+        <div class="file-selection-actions">
+          <button id="select-all-files" type="button" class="secondary">Markera alla</button>
+          <button id="deselect-all-files" type="button" class="secondary">Avmarkera alla</button>
+        </div>
+        <div id="file-list" class="file-list"></div>
+      </div>
     </section>
 
     <section id="report" hidden>
@@ -187,8 +217,8 @@
             <tr>
               <th class="date">Datum</th>
               <th class="amount">Belopp</th>
-              <th class="direction">Typ (K=Kredit, D=Debet)</th>
-              <th class="account">Konto</th>
+              <th class="direction">Typ (D/K)</th>
+              <th class="account">Konto/BG</th>
               <th class="counterparty">Motpart</th>
               <th class="reference">Referens / meddelande</th>
               <th class="source">Källfil</th>
@@ -231,7 +261,7 @@
     let logHandle = null;
     let logLines = [];
     let processedRecords = [];
-    let loadedTransactions = [];
+    let loadedFiles = [];
     let pendingFiles = [];
     let reportReady = false;
 
@@ -292,10 +322,11 @@
       loadButton.disabled = false;
       reportButton.disabled = true;
       reportSection.hidden = true;
-      loadedTransactions = [];
+      loadedFiles = [];
       pendingFiles = [];
       reportReady = false;
       markButton.disabled = true;
+      document.getElementById("file-selection").hidden = true;
       await loadLog();
     }
 
@@ -340,6 +371,14 @@
       return element ? element.textContent.trim().replace(/\s+/g, " ") : "";
     }
 
+    function logDataIssue(message, details = {}) {
+      console.warn(`[CAMT054] ${message}`, details);
+    }
+
+    function logOperationError(operation, error, details = {}) {
+      console.error(`[CAMT054] ${operation} failed`, { ...details, error });
+    }
+
     function firstText(element, ...names) {
       for (const name of names) {
         const value = nodeText(firstDescendant(element, name));
@@ -363,14 +402,73 @@
       return firstText(account, "Id", "Nm");
     }
 
-    function partyName(transaction, partyType) {
-      const parties = firstDescendant(transaction, "RltdPties");
-      const scope = parties || transaction;
-      const party = firstDescendant(scope, partyType);
-      return party ? firstText(party, "Nm") : "";
+    function directChild(element, name) {
+      return Array.from(element.children).find((child) => localName(child) === name) || null;
     }
 
-    function remittanceText(transaction) {
+    function relatedCreditorAccount(transaction) {
+      const parties = firstDescendant(transaction, "RltdPties");
+      if (!parties) return "";
+      const account = directChild(parties, "CdtrAcct");
+      const proxy = account && directChild(account, "Prxy");
+      if (!proxy) return "";
+
+      const proxyType = directChild(proxy, "Tp");
+      const type = proxyType ? firstText(proxyType, "Prtry", "Cd") : "";
+      const identifier = firstText(proxy, "Id");
+      if (type !== "BGNR" || !identifier) return "";
+
+      const formattedIdentifier = /^\d{8}$/.test(identifier)
+        ? `${identifier.slice(0, 4)}-${identifier.slice(4)}`
+        : /^\d{7}$/.test(identifier)
+          ? `${identifier.slice(0, 3)}-${identifier.slice(3)}`
+          : identifier;
+      return `BGNR ${formattedIdentifier}`;
+    }
+
+    function partyAddress(party) {
+      const postalAddress = firstDescendant(party, "PstlAdr");
+      if (!postalAddress) return "";
+
+      const addressLines = Array.from(postalAddress.children)
+        .filter((child) => localName(child) === "AdrLine")
+        .map(nodeText)
+        .filter(Boolean);
+      if (addressLines.length) return addressLines.join("\n");
+
+      const streetParts = ["StrtNm", "BldgNb", "Flr"]
+        .map((name) => {
+          const child = directChild(postalAddress, name);
+          return child ? nodeText(child) : "";
+        })
+        .filter(Boolean);
+      const localityParts = ["PstCd", "TwnNm", "CtrySubDvsn"]
+        .map((name) => {
+          const child = directChild(postalAddress, name);
+          return child ? nodeText(child) : "";
+        })
+        .filter(Boolean);
+      const country = directChild(postalAddress, "Ctry");
+      if (country && nodeText(country)) localityParts.push(nodeText(country));
+
+      return [streetParts.join(" "), localityParts.join(" ")]
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    function partyDescription(transaction, partyType) {
+      const parties = firstDescendant(transaction, "RltdPties");
+      if (!parties) return "";
+      const party = directChild(parties, partyType);
+      if (!party) return "";
+
+      const partyDetails = directChild(party, "Pty") || party;
+      return [firstText(partyDetails, "Nm"), partyAddress(partyDetails)]
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    function remittanceText(transaction, context = {}) {
       const remittance = firstDescendant(transaction, "RmtInf");
       if (!remittance) return "";
       const values = [];
@@ -378,16 +476,19 @@
         const name = localName(item);
         if (name === "Ustrd") {
           const value = nodeText(item);
-          if (value) values.push(`Ustrd: ${value}`);
+          if (value) values.push(`Textref: ${value}`);
+          else logDataIssue("Empty Ustrd/Textref.", context);
         } else {
-          const value = referenceDetailText(item);
-          if (value) values.push(`${name === "Strd" ? "Structured" : name}: ${value}`);
+          const value = referenceDetailText(item, context);
+          if (value) values.push(value);
         }
       }
-      return values.join("\n") || nodeText(remittance);
+      const value = values.join("\n") || nodeText(remittance);
+      if (!value) logDataIssue("RmtInf exists but contains no printable reference.", context);
+      return value;
     }
 
-    function referenceDetailText(element) {
+    function referenceDetailText(element, context = {}) {
       const children = Array.from(element.children);
       const references = children.filter((item) => ["RfrdDocInf", "CdtrRefInf"].includes(localName(item)));
       const amounts = children.filter((item) => localName(item) === "RfrdDocAmt");
@@ -396,7 +497,21 @@
       for (const [index, reference] of references.entries()) {
         const code = firstText(reference, "Cd", "Prtry");
         const identifier = firstText(reference, "Nb", "Ref");
-        let description = [code, identifier].filter(Boolean).join(" ");
+        if (!code) {
+          logDataIssue("Structured reference is missing its type code.", { ...context, reference });
+        }
+        if (!identifier) {
+          logDataIssue("Structured reference is missing Nb/Ref.", { ...context, type: code || "unknown" });
+        }
+        const label = {
+          SCOR: "OCR",
+          CINV: "Faktnr",
+          CREN: "Kreditnota (CREN)",
+        }[code] || code || "Referens";
+        if (code && !["SCOR", "CINV", "CREN"].includes(code)) {
+          logDataIssue("Unmapped structured reference type.", { ...context, type: code });
+        }
+        let description = `${label}: ${identifier || "—"}`;
         const amount = amounts[index];
         if (amount) {
           const amountValues = Array.from(amount.getElementsByTagName("*"))
@@ -406,7 +521,23 @@
               return `${nodeText(item)} ${currency}`.trim();
             })
             .filter(Boolean);
-          if (amountValues.length) description = [description, amountValues.join(", ")].filter(Boolean).join(" — ");
+          if (amountValues.length) {
+            description += identifier
+              ? ` — Belopp: ${amountValues.join(", ")}`
+              : ` (Belopp: ${amountValues.join(", ")})`;
+          } else {
+            logDataIssue("Structured reference amount is present but has no value.", {
+              ...context,
+              type: code || "unknown",
+              identifier,
+            });
+          }
+        } else if (["SCOR", "CINV", "CREN"].includes(code)) {
+          logDataIssue("Structured reference has no RfrdDocAmt.", {
+            ...context,
+            type: code,
+            identifier,
+          });
         }
         const excluded = new Set(["Cd", "Prtry", "Nb", "Ref"]);
         const extras = Array.from(reference.getElementsByTagName("*"))
@@ -419,6 +550,10 @@
 
       for (const [index, amount] of amounts.entries()) {
         if (index < references.length) continue;
+        logDataIssue("RfrdDocAmt has no matching document reference.", {
+          ...context,
+          amount,
+        });
         for (const item of Array.from(amount.getElementsByTagName("*"))) {
           if (item.children.length) continue;
           const currency = item.getAttribute("Ccy") || "";
@@ -432,7 +567,7 @@
         if (handled.has(item)) continue;
         if (localName(item) === "AddtlRmtInf") {
           const value = nodeText(item);
-          if (value) values.push(`AddtlRmtInf: ${value}`);
+          if (value) values.push(`Utökad ref: ${value}`);
           continue;
         }
         for (const leaf of Array.from(item.getElementsByTagName("*"))) {
@@ -445,7 +580,7 @@
         }
       }
 
-      return values.join("; ") || nodeText(element);
+      return values.join("\n") || nodeText(element);
     }
 
     function transactionReferences(transaction) {
@@ -485,10 +620,20 @@
       return `${nodeText(amount)} ${currency}`.trim();
     }
 
-    function getMonth(entry) {
-      const bookingDate = dateValue(entry, "BookgDt");
-      const valueDate = dateValue(entry, "ValDt");
-      const date = (bookingDate || valueDate).slice(0, 10);
+    function transactionDate(entry, transaction) {
+      const executedDate = firstText(
+        transaction,
+        "TxDt",
+        "IntrBkSttlmDt",
+        "AccptncDtTm",
+        "TradDt",
+      ).slice(0, 10);
+      const bookingDate = dateValue(entry, "BookgDt").slice(0, 10);
+      const valueDate = dateValue(entry, "ValDt").slice(0, 10);
+      return executedDate || bookingDate || valueDate;
+    }
+
+    function getMonth(date) {
       return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.slice(0, 7) : "";
     }
 
@@ -511,7 +656,12 @@
         let recordMillis;
         try {
           recordMillis = BigInt(record.mtime_ns) / 1000000n;
-        } catch {
+        } catch (error) {
+          logDataIssue("Processed-file log has an invalid mtime_ns value.", {
+            fileName: file.name,
+            record,
+            error,
+          });
           return false;
         }
         return recordMillis === BigInt(Math.trunc(file.lastModified)) &&
@@ -532,14 +682,19 @@
         logHandle = await directoryHandle.getFileHandle(LOG_NAME);
         const contents = await (await logHandle.getFile()).text();
         logLines = contents.split(/\r?\n/).filter(Boolean);
-        for (const line of logLines) {
+        for (const [lineIndex, line] of logLines.entries()) {
           try {
             const preciseLine = line.replace(
               /("mtime_ns"\s*:\s*)(\d+)/,
               '$1"$2"',
             );
             processedRecords.push(JSON.parse(preciseLine));
-          } catch {
+          } catch (error) {
+            logDataIssue(`Invalid JSON in ${LOG_NAME}; ignoring this log line.`, {
+              lineNumber: lineIndex + 1,
+              line,
+              error,
+            });
             setStatus(`Ogiltig rad i ${LOG_NAME} ignorerades; övriga loggrader behålls.`, "error");
           }
         }
@@ -556,45 +711,144 @@
       const notifications = descendants(xmlDocument, "Ntfctn");
       const scopes = notifications.length ? notifications : [xmlDocument.documentElement];
       const result = [];
+      let entryCount = 0;
 
       for (const notification of scopes) {
         const account = accountDescription(notification);
         for (const entry of descendants(notification, "Ntry")) {
+          entryCount += 1;
           const txDetails = descendants(entry, "TxDtls");
           const transactions = txDetails.length ? txDetails : [entry];
           const indicator = firstText(entry, "CdtDbtInd");
           const direction = indicator === "CRDT" ? "K"
             : indicator === "DBIT" ? "D" : indicator;
-          const bookingDate = dateValue(entry, "BookgDt");
-          const valueDate = dateValue(entry, "ValDt");
-          const date = (bookingDate || valueDate).slice(0, 10);
-
+          const additionalEntryInfo = firstText(entry, "AddtlNtryInf");
           for (const [transactionIndex, transaction] of transactions.entries()) {
+            const date = transactionDate(entry, transaction);
             const counterparty = indicator === "DBIT"
-              ? partyName(transaction, "Cdtr") || partyName(transaction, "Dbtr")
-              : partyName(transaction, "Dbtr") || partyName(transaction, "Cdtr");
-            const additionalEntryInfo = firstText(entry, "AddtlNtryInf");
+              ? partyDescription(transaction, "Cdtr") || partyDescription(transaction, "Dbtr")
+              : partyDescription(transaction, "Dbtr") || partyDescription(transaction, "Cdtr");
+            const counterpartyAccount = relatedCreditorAccount(transaction) || account;
+            const txReferences = transactionReferences(transaction);
+            const referenceContext = {
+              fileName,
+              transactionIndex: transactionIndex + 1,
+            };
+            if (!["CRDT", "DBIT"].includes(indicator)) {
+              logDataIssue("Transaction has a missing or unsupported CdtDbtInd.", {
+                ...referenceContext,
+                value: indicator,
+              });
+            }
+            const remittance = remittanceText(transaction, referenceContext);
+            const transactionAmount = amountText(entry, transaction);
+            if (!date) {
+              logDataIssue("Transaction has no execution, booking or value date.", referenceContext);
+            }
+            if (!transactionAmount) {
+              logDataIssue("Transaction has no amount.", referenceContext);
+            }
+            if (!counterparty) {
+              logDataIssue("Transaction has no counterparty name.", referenceContext);
+            }
             const references = [
-              ...transactionReferences(transaction),
-              remittanceText(transaction),
-              transactionIndex === 0 && additionalEntryInfo
-                ? `Additional entry information: ${additionalEntryInfo}`
-                : "",
+              ...txReferences,
+              remittance,
             ].filter(Boolean);
             result.push({
-              month: getMonth(entry),
+              month: getMonth(date),
               date,
-              amount: amountText(entry, transaction),
+              amount: transactionAmount,
               direction,
-              account,
+              account: counterpartyAccount,
               counterparty,
               reference: [...new Set(references)].join("\n"),
               source: fileName,
             });
           }
+          if (additionalEntryInfo) {
+            const date = (dateValue(entry, "BookgDt") || dateValue(entry, "ValDt")).slice(0, 10);
+            result.push({
+              month: getMonth(date),
+              date,
+              amount: "",
+              direction: "",
+              account: "",
+              counterparty: "",
+              reference: `Entryinfo: ${additionalEntryInfo}`,
+              source: fileName,
+              isEntryInfo: true,
+            });
+          }
         }
       }
+      if (entryCount === 0) {
+        logDataIssue("CAMT file contains no Ntry entries.", { fileName });
+      }
       return result;
+    }
+
+    function renderFileSelection() {
+      const fileSelection = document.getElementById("file-selection");
+      const fileList = document.getElementById("file-list");
+      fileList.replaceChildren();
+      document.getElementById("file-selection-title").textContent =
+        `Filer i mappen (${loadedFiles.length})`;
+
+      loadedFiles.forEach((item, index) => {
+        const label = document.createElement("label");
+        label.className = "file-row";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = item.selected;
+        checkbox.disabled = Boolean(item.error);
+        checkbox.dataset.fileIndex = String(index);
+
+        const details = document.createElement("span");
+        details.className = "file-details";
+        const name = document.createElement("span");
+        name.className = "file-name";
+        name.textContent = item.name;
+        const meta = document.createElement("span");
+        meta.className = "file-meta";
+        meta.textContent = item.error
+          ? `Kunde inte läsas: ${item.error}`
+          : `${item.processed ? "Redan behandlad" : "Ny/ändrad"} · ${item.transactions.length} transaktion(er)`;
+        details.append(name, document.createElement("br"), meta);
+        label.append(checkbox, details);
+        fileList.append(label);
+      });
+
+      fileSelection.hidden = false;
+      updateReportButton();
+    }
+
+    function updateReportButton() {
+      reportButton.disabled = !loadedFiles.some((item) => item.selected && !item.error);
+    }
+
+    function updateFileSelection(event) {
+      const checkbox = event.target.closest("input[data-file-index]");
+      if (!checkbox) return;
+      const item = loadedFiles[Number(checkbox.dataset.fileIndex)];
+      if (!item) return;
+      item.selected = checkbox.checked;
+      reportSection.hidden = true;
+      reportReady = false;
+      pendingFiles = [];
+      markButton.disabled = true;
+      updateReportButton();
+    }
+
+    function setSelectableFilesSelected(selected) {
+      for (const item of loadedFiles) {
+        if (!item.error) item.selected = selected;
+      }
+      renderFileSelection();
+      reportSection.hidden = true;
+      reportReady = false;
+      pendingFiles = [];
+      markButton.disabled = true;
     }
 
     async function chooseFolder() {
@@ -616,13 +870,17 @@
           await rememberFolder(handle);
           setStatus("Mappen är vald och sparad. Läs in filerna för att fortsätta.", "success");
         } catch (error) {
+          logOperationError("Unable to remember selected folder", error, { folderName: handle.name });
           setStatus(
             `Mappen är vald men kunde inte sparas för nästa gång: ${error.message}`,
             "error",
           );
         }
       } catch (error) {
-        if (error.name !== "AbortError") setStatus(error.message, "error");
+        if (error.name !== "AbortError") {
+          logOperationError("Unable to select folder", error);
+          setStatus(error.message, "error");
+        }
       }
     }
 
@@ -633,7 +891,7 @@
       reportSection.hidden = true;
       reportReady = false;
       markButton.disabled = true;
-      loadedTransactions = [];
+      loadedFiles = [];
       pendingFiles = [];
       let fileCount = 0;
       let skippedCount = 0;
@@ -645,25 +903,43 @@
           if (handle.kind !== "file" || !FILE_EXTENSIONS.has(extension) || name === LOG_NAME) continue;
           fileCount += 1;
           const file = await handle.getFile();
-          if (!includeProcessed.checked && isProcessed(file)) {
-            skippedCount += 1;
-            continue;
-          }
+          const processed = isProcessed(file);
+          if (processed) skippedCount += 1;
           try {
             const xml = new DOMParser().parseFromString(await file.text(), "application/xml");
             const transactions = extractFileTransactions(xml, name);
-            loadedTransactions.push(...transactions);
-            pendingFiles.push({ file, name });
+            loadedFiles.push({
+              file,
+              name,
+              transactions,
+              processed,
+              selected: !processed || includeProcessed.checked,
+              error: "",
+            });
           } catch (error) {
+            logOperationError("Unable to parse CAMT file", error, { fileName: name });
             errors.push(`${name}: ${error.message}`);
+            loadedFiles.push({
+              file,
+              name,
+              transactions: [],
+              processed,
+              selected: false,
+              error: error.message,
+            });
           }
         }
-        reportButton.disabled = false;
-        const message = `${fileCount} CAMT-fil(er) hittades; ${skippedCount} redan behandlade hoppades över; ` +
-          `${pendingFiles.length} nya/valda fil(er) lästes in.` +
+        loadedFiles.sort((left, right) => left.name.localeCompare(right.name, "sv"));
+        renderFileSelection();
+        const processedSelection = includeProcessed.checked ? "markerade" : "omarkerade";
+        const message = `${fileCount} CAMT-fil(er) hittades; ${skippedCount} redan behandlade är ${processedSelection} som standard.` +
           (errors.length ? ` ${errors.length} fil(er) kunde inte läsas: ${errors.join(" | ")}` : "");
         setStatus(message, errors.length ? "error" : "success");
       } catch (error) {
+        logOperationError("Unable to load files from selected folder", error, {
+          folderName: directoryHandle.name,
+        });
+        document.getElementById("file-selection").hidden = true;
         setStatus(`Kunde inte läsa mappen eller loggen: ${error.message}`, "error");
       } finally {
         loadButton.disabled = false;
@@ -673,14 +949,31 @@
     function createReport() {
       const month = monthInput.value;
       if (!month) {
+        logDataIssue("Report creation requested without selecting a report month.");
         setStatus("Välj en rapportmånad först.", "error");
         return;
       }
-      const rows = loadedTransactions.filter((transaction) => transaction.month === month);
+      const selectedFiles = loadedFiles.filter((item) => item.selected && !item.error);
+      if (!selectedFiles.length) {
+        logDataIssue("Report creation requested without selecting any valid files.", {
+          folderName: directoryHandle && directoryHandle.name,
+        });
+        setStatus("Markera minst en fil som ska ingå i rapporten.", "error");
+        return;
+      }
+      pendingFiles = selectedFiles.map(({ file, name }) => ({ file, name }));
+      const rows = selectedFiles
+        .flatMap((item) => item.transactions)
+        .filter((transaction) => transaction.month === month)
+        .sort((left, right) =>
+          (left.date || "9999-99-99").localeCompare(right.date || "9999-99-99") ||
+          left.source.localeCompare(right.source, "sv"),
+        );
+      const transactionCount = rows.filter((row) => !row.isEntryInfo).length;
       reportTitle.textContent = `CAMT.054 – transaktioner ${month}`;
       document.title = `CAMT.054 månadsrapport ${month}`;
       reportMeta.textContent =
-        `${rows.length} transaktion(er) från ${pendingFiles.length} inläst(a) fil(er). ` +
+        `${transactionCount} transaktion(er) från ${pendingFiles.length} vald(a) fil(er). ` +
         `Källa: ${directoryHandle.name}`;
       transactionsBody.replaceChildren();
 
@@ -694,6 +987,7 @@
       } else {
         for (const transaction of rows) {
           const row = document.createElement("tr");
+          if (transaction.isEntryInfo) row.className = "entry-info-row";
           const values = [
             displayDate(transaction.date),
             transaction.amount,
@@ -709,6 +1003,7 @@
             if (index === 0) cell.className = "date";
             if (index === 1) cell.className = "amount";
             if (index === 3) cell.className = "account";
+            if (index === 4) cell.className = "counterparty";
             if (index === 5) cell.className = "reference";
             row.append(cell);
           });
@@ -749,9 +1044,18 @@
         await writable.close();
         logLines.push(...newLines);
         processedRecords.push(...recordsToAppend);
+        const processedNames = new Set(recordsToAppend.map((record) => record.path));
+        for (const item of loadedFiles) {
+          if (processedNames.has(item.name)) item.processed = true;
+        }
+        renderFileSelection();
         pendingFiles = [];
         setStatus(`Filerna har markerats som behandlade i ${LOG_NAME}.`, "success");
       } catch (error) {
+        logOperationError("Unable to write processed-file log", error, {
+          folderName: directoryHandle.name,
+          fileNames: pendingFiles.map(({ name }) => name),
+        });
         setStatus(`Kunde inte uppdatera behandlingsloggen: ${error.message}`, "error");
         markButton.disabled = false;
       }
@@ -760,9 +1064,13 @@
     folderButton.addEventListener("click", chooseFolder);
     loadButton.addEventListener("click", loadFiles);
     reportButton.addEventListener("click", createReport);
+    document.getElementById("file-list").addEventListener("change", updateFileSelection);
+    document.getElementById("select-all-files").addEventListener("click", () => setSelectableFilesSelected(true));
+    document.getElementById("deselect-all-files").addEventListener("click", () => setSelectableFilesSelected(false));
     markButton.addEventListener("click", markProcessed);
     document.getElementById("print-report").addEventListener("click", () => window.print());
     restoreLastFolder().catch((error) => {
+      logOperationError("Unable to restore last selected folder", error);
       setStatus(`Kunde inte återställa senast valda mapp: ${error.message}`, "error");
     });
   </script>
