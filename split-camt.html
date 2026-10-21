@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CAMT.054 – dela rapporter</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: #1d2935;
+      background: #eef2f5;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 28px 18px; }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      background: #fff;
+      border: 1px solid #d8e0e7;
+      border-radius: 12px;
+      box-shadow: 0 8px 28px #18344b12;
+      overflow: hidden;
+    }
+    header { padding: 28px 32px; color: #fff; background: #183c59; }
+    h1 { margin: 0 0 8px; font-size: 25px; }
+    header p { margin: 0; color: #d6e4ef; line-height: 1.5; }
+    section { padding: 24px 32px; }
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      align-items: end;
+    }
+    label { display: block; font-weight: 600; font-size: 14px; }
+    input[type="file"], input[type="month"], textarea, button {
+      width: 100%;
+      margin-top: 7px;
+      border: 1px solid #b9c7d3;
+      border-radius: 6px;
+      padding: 9px 12px;
+      font: inherit;
+      background: #fff;
+    }
+    input[type="file"], input[type="month"], button { min-height: 42px; }
+    button {
+      width: auto;
+      cursor: pointer;
+      color: #fff;
+      font-weight: 600;
+      border-color: #1c5b82;
+      background: #1c5b82;
+    }
+    button.secondary { color: #1c4d6c; border-color: #b9c7d3; background: #fff; }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+    .mapping { margin-top: 20px; }
+    .mapping textarea { min-height: 142px; resize: vertical; line-height: 1.5; }
+    .hint, .file-info { color: #526273; font-size: 13px; line-height: 1.5; }
+    .hint { margin: 8px 0 0; }
+    .file-info { margin-top: 14px; overflow-wrap: anywhere; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+    .status { padding: 13px 16px; border-radius: 6px; background: #f1f5f8; line-height: 1.5; }
+    .status.error { color: #842e22; background: #fff0ed; }
+    .status.success { color: #205c39; background: #edf8f0; }
+    #report { border-top: 1px solid #d8e0e7; }
+    #report[hidden] { display: none; }
+    .report-block + .report-block { margin-top: 30px; padding-top: 26px; border-top: 2px dashed #b9c7d3; }
+    .report-head { margin-bottom: 18px; }
+    .report-head h2 { margin: 0 0 6px; font-size: 21px; }
+    .report-meta { color: #526273; font-size: 13px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    col.date { width: 9%; }
+    col.amount { width: 9%; }
+    col.direction { width: 6%; }
+    col.account { width: 15%; }
+    col.counterparty { width: 15%; }
+    col.reference { width: 27%; }
+    col.source { width: 19%; }
+    th, td {
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+      border: 1px solid #d8e0e7;
+      overflow-wrap: anywhere;
+    }
+    th { color: #183c59; background: #edf2f6; }
+    td.date, td.amount, td.account { white-space: nowrap; }
+    td.amount { text-align: right; font-variant-numeric: tabular-nums; }
+    td.counterparty, td.reference { white-space: pre-line; }
+    @media (max-width: 620px) {
+      body { padding: 0; }
+      main { border: 0; border-radius: 0; }
+      header, section { padding: 22px 18px; }
+      .controls { grid-template-columns: 1fr; }
+    }
+    @media print {
+      @page { size: A4 landscape; margin: 10mm; }
+      body { padding: 0; background: #fff; }
+      main { max-width: none; border: 0; border-radius: 0; box-shadow: none; }
+      header, #setup, #report-actions { display: none !important; }
+      #report { display: block !important; border: 0; padding: 0; }
+      .report-block + .report-block { break-before: page; margin-top: 0; padding-top: 0; border: 0; }
+      .report-head { margin-bottom: 12px; }
+      table { width: 100%; table-layout: fixed; font-size: 7pt; }
+      th, td { padding: 4px; overflow-wrap: anywhere; }
+      tr { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>CAMT.054 – dela upp rapporter</h1>
+      <p>Ladda upp en CAMT-fil och skapa separata rapportavsnitt efter motpartens organisationsnummer.</p>
+    </header>
+
+    <section id="setup">
+      <div class="controls">
+        <label>
+          CAMT-fil (.xml eller .camt)
+          <input id="camt-file" type="file" accept=".xml,.camt,application/xml,text/xml">
+        </label>
+      </div>
+      <div id="file-info" class="file-info">Ingen fil vald.</div>
+      <div class="mapping">
+        <label for="report-mapping">Rapporter och organisationsnummer</label>
+        <textarea id="report-mapping" spellcheck="false"
+          placeholder="Exempel:&#10;Kund A: 5563720506, 5561234567&#10;Kund B: 5569876543"></textarea>
+        <p class="hint">
+          En rapport per rad: <code>Rapportnamn: org.nr, org.nr</code>.
+          Matchning görs mot organisationsnummer på kontots ägare eller motpartens <code>OrgId</code> i CAMT-filen.
+          Nummer kan skrivas med eller utan bindestreck.
+          Varje rapport blir ett eget avsnitt i den utskrivna/sparade PDF:en.
+        </p>
+      </div>
+      <div class="actions">
+        <button id="create-reports" type="button" disabled>Skapa rapporter</button>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite">Välj en CAMT-fil för att börja.</p>
+    </section>
+
+    <section id="report" hidden>
+      <div id="report-list"></div>
+      <div id="report-actions" class="actions">
+        <button id="print-report" type="button">Skriv ut / spara som PDF</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+
+    const fileInput = document.getElementById("camt-file");
+    const mappingInput = document.getElementById("report-mapping");
+    const createButton = document.getElementById("create-reports");
+    const statusBox = document.getElementById("status");
+    const fileInfo = document.getElementById("file-info");
+    const reportSection = document.getElementById("report");
+    const reportList = document.getElementById("report-list");
+    let loadedFile = null;
+    let transactions = [];
+
+    function setStatus(message, kind = "") {
+      statusBox.textContent = message;
+      statusBox.className = `status ${kind}`.trim();
+    }
+
+    function localName(element) {
+      return element.localName || element.nodeName.split(":").pop();
+    }
+
+    function descendants(element, name) {
+      return Array.from(element.getElementsByTagName("*"))
+        .filter((child) => localName(child) === name);
+    }
+
+    function firstDescendant(element, name) {
+      return descendants(element, name)[0] || null;
+    }
+
+    function directChild(element, name) {
+      return Array.from(element.children).find((child) => localName(child) === name) || null;
+    }
+
+    function nodeText(element) {
+      return element ? element.textContent.trim().replace(/\s+/g, " ") : "";
+    }
+
+    function firstText(element, ...names) {
+      for (const name of names) {
+        const value = nodeText(firstDescendant(element, name));
+        if (value) return value;
+      }
+      return "";
+    }
+
+    function dateValue(entry, containerName) {
+      const container = firstDescendant(entry, containerName);
+      return container ? firstText(container, "Dt", "DtTm") : "";
+    }
+
+    function accountDescription(notification) {
+      const account = firstDescendant(notification, "Acct");
+      if (!account) return "";
+      for (const name of ["IBAN", "Othr"]) {
+        const identifier = firstDescendant(account, name);
+        if (identifier && nodeText(identifier)) return nodeText(identifier);
+      }
+      return firstText(account, "Id", "Nm");
+    }
+
+    function partyAddress(party) {
+      const postalAddress = firstDescendant(party, "PstlAdr");
+      if (!postalAddress) return "";
+      const addressLines = Array.from(postalAddress.children)
+        .filter((child) => localName(child) === "AdrLine")
+        .map(nodeText)
+        .filter(Boolean);
+      if (addressLines.length) return addressLines.join("\n");
+      const streetParts = ["StrtNm", "BldgNb", "Flr"]
+        .map((name) => {
+          const child = directChild(postalAddress, name);
+          return child ? nodeText(child) : "";
+        })
+        .filter(Boolean);
+      const localityParts = ["PstCd", "TwnNm", "CtrySubDvsn"]
+        .map((name) => {
+          const child = directChild(postalAddress, name);
+          return child ? nodeText(child) : "";
+        })
+        .filter(Boolean);
+      const country = directChild(postalAddress, "Ctry");
+      if (country && nodeText(country)) localityParts.push(nodeText(country));
+      return [streetParts.join(" "), localityParts.join(" ")].filter(Boolean).join("\n");
+    }
+
+    function counterpartyNode(transaction, indicator) {
+      const parties = firstDescendant(transaction, "RltdPties");
+      if (!parties) return null;
+      const types = indicator === "DBIT" ? ["Cdtr", "Dbtr"] : ["Dbtr", "Cdtr"];
+      for (const type of types) {
+        const party = directChild(parties, type);
+        if (party) return party;
+      }
+      return null;
+    }
+
+    function partyDescription(party) {
+      if (!party) return "";
+      const details = directChild(party, "Pty") || party;
+      return [firstText(details, "Nm"), partyAddress(details)].filter(Boolean).join("\n");
+    }
+
+    function partyOrganizationNumbers(party) {
+      if (!party) return [];
+      const details = directChild(party, "Pty") || party;
+      const identifiers = descendants(details, "OrgId")
+        .flatMap((organization) => descendants(organization, "Othr"))
+        .map((other) => firstText(other, "Id"))
+        .filter(Boolean);
+      return [...new Set(identifiers)];
+    }
+
+    function relatedCreditorAccount(transaction) {
+      const parties = firstDescendant(transaction, "RltdPties");
+      if (!parties) return "";
+      const account = directChild(parties, "CdtrAcct");
+      const proxy = account && directChild(account, "Prxy");
+      if (!proxy) return "";
+      const proxyType = directChild(proxy, "Tp");
+      const type = proxyType ? firstText(proxyType, "Prtry", "Cd") : "";
+      const identifier = firstText(proxy, "Id");
+      if (type !== "BGNR" || !identifier) return "";
+      const formattedIdentifier = /^\d{8}$/.test(identifier)
+        ? `${identifier.slice(0, 4)}-${identifier.slice(4)}`
+        : /^\d{7}$/.test(identifier)
+          ? `${identifier.slice(0, 3)}-${identifier.slice(3)}`
+          : identifier;
+      return `BGNR ${formattedIdentifier}`;
+    }
+
+    function referenceDetailText(element) {
+      const children = Array.from(element.children);
+      const references = children.filter((item) =>
+        ["RfrdDocInf", "CdtrRefInf"].includes(localName(item)));
+      const amounts = children.filter((item) => localName(item) === "RfrdDocAmt");
+      const values = [];
+      for (const [index, reference] of references.entries()) {
+        const code = firstText(reference, "Cd", "Prtry");
+        const identifier = firstText(reference, "Nb", "Ref");
+        const label = { SCOR: "OCR", CINV: "Faktnr", CREN: "Kreditnota (CREN)" }[code] || code || "Referens";
+        let description = `${label}: ${identifier || "—"}`;
+        const amount = amounts[index];
+        if (amount) {
+          const amountValues = Array.from(amount.getElementsByTagName("*"))
+            .filter((item) => item.children.length === 0)
+            .map((item) => `${nodeText(item)} ${item.getAttribute("Ccy") || ""}`.trim())
+            .filter(Boolean);
+          if (amountValues.length) {
+            description += identifier
+              ? ` — Belopp: ${amountValues.join(", ")}`
+              : ` (Belopp: ${amountValues.join(", ")})`;
+          }
+        }
+        const excluded = new Set(["Cd", "Prtry", "Nb", "Ref"]);
+        const extras = Array.from(reference.getElementsByTagName("*"))
+          .filter((item) => item.children.length === 0 && !excluded.has(localName(item)))
+          .map((item) => `${localName(item)}: ${nodeText(item)}`)
+          .filter((value) => !value.endsWith(": "));
+        if (extras.length) description = [description, ...extras].join("; ");
+        if (description) values.push(description);
+      }
+      for (const [index, amount] of amounts.entries()) {
+        if (index < references.length) continue;
+        for (const item of Array.from(amount.getElementsByTagName("*"))) {
+          if (item.children.length) continue;
+          const value = `${nodeText(item)} ${item.getAttribute("Ccy") || ""}`.trim();
+          if (value) values.push(value);
+        }
+      }
+      const handled = new Set([...references, ...amounts]);
+      for (const item of children) {
+        if (handled.has(item)) continue;
+        if (localName(item) === "AddtlRmtInf") {
+          const value = nodeText(item);
+          if (value) values.push(`Utökad ref: ${value}`);
+          continue;
+        }
+        for (const leaf of Array.from(item.getElementsByTagName("*"))) {
+          if (leaf.children.length) continue;
+          const value = nodeText(leaf);
+          if (value) values.push(`${localName(leaf)}${leaf.getAttribute("Ccy") ? ` (${leaf.getAttribute("Ccy")})` : ""}: ${value}`);
+        }
+      }
+      return values.join("\n") || nodeText(element);
+    }
+
+    function remittanceText(transaction) {
+      const remittance = firstDescendant(transaction, "RmtInf");
+      if (!remittance) return "";
+      const values = [];
+      for (const item of Array.from(remittance.children)) {
+        if (localName(item) === "Ustrd") {
+          const value = nodeText(item);
+          if (value) values.push(`Textref: ${value}`);
+        } else {
+          const value = referenceDetailText(item);
+          if (value) values.push(value);
+        }
+      }
+      return values.join("\n") || nodeText(remittance);
+    }
+
+    function transactionReferences(transaction) {
+      const labels = {
+        MsgId: "Message reference",
+        PmtInfId: "Payment information reference",
+        EndToEndId: "End-to-end reference",
+        TxId: "Transaction reference",
+        MndtId: "Mandate reference",
+        ChqNb: "Cheque number",
+        ClrSysRef: "Clearing system reference",
+        Prtry: "Proprietary reference",
+      };
+      const references = firstDescendant(transaction, "Refs");
+      if (references) {
+        return Array.from(references.children)
+          .filter((item) => !["AcctSvcrRef", "InstrId"].includes(localName(item)))
+          .map((item) => {
+            const value = nodeText(item);
+            return value ? `${labels[localName(item)] || localName(item)}: ${value}` : "";
+          })
+          .filter(Boolean);
+      }
+      return ["EndToEndId", "TxId"].map((tag) => {
+        const value = firstText(transaction, tag);
+        return value ? `${tag}: ${value}` : "";
+      }).filter(Boolean);
+    }
+
+    function amountText(entry, transaction) {
+      const amount = firstDescendant(transaction, "TxAmt") || firstDescendant(entry, "Amt");
+      if (!amount) return "";
+      return `${nodeText(amount)} ${amount.getAttribute("Ccy") || ""}`.trim();
+    }
+
+    function transactionDate(entry, transaction) {
+      const executedDate = firstText(transaction, "TxDt", "IntrBkSttlmDt", "AccptncDtTm", "TradDt").slice(0, 10);
+      const bookingDate = dateValue(entry, "BookgDt").slice(0, 10);
+      const valueDate = dateValue(entry, "ValDt").slice(0, 10);
+      return executedDate || bookingDate || valueDate;
+    }
+
+    function extractTransactions(xmlDocument, fileName) {
+      if (xmlDocument.querySelector("parsererror")) throw new Error("Filen innehåller ogiltig XML.");
+      const notifications = descendants(xmlDocument, "Ntfctn");
+      const scopes = notifications.length ? notifications : [xmlDocument.documentElement];
+      const result = [];
+      let entryCount = 0;
+      for (const notification of scopes) {
+        const account = accountDescription(notification);
+        const owner = firstDescendant(notification, "Ownr");
+        const ownerOrganizationNumbers = partyOrganizationNumbers(owner);
+        for (const entry of descendants(notification, "Ntry")) {
+          entryCount += 1;
+          const details = descendants(entry, "TxDtls");
+          const txDetails = details.length ? details : [entry];
+          const indicator = firstText(entry, "CdtDbtInd");
+          for (const transaction of txDetails) {
+            const party = counterpartyNode(transaction, indicator);
+            const date = transactionDate(entry, transaction);
+            const remittance = remittanceText(transaction);
+            result.push({
+              date,
+              month: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.slice(0, 7) : "",
+              amount: amountText(entry, transaction),
+              direction: indicator === "CRDT" ? "K" : indicator === "DBIT" ? "D" : indicator,
+              account: relatedCreditorAccount(transaction) || account,
+              counterparty: partyDescription(party),
+              organizationNumbers: [...new Set([
+                ...ownerOrganizationNumbers,
+                ...partyOrganizationNumbers(party),
+              ])],
+              reference: [...new Set([...transactionReferences(transaction), remittance].filter(Boolean))].join("\n"),
+              source: fileName,
+            });
+          }
+        }
+      }
+      if (entryCount === 0) throw new Error("CAMT-filen innehåller inga Ntry-poster.");
+      return result;
+    }
+
+    function normalizeOrganizationNumber(value) {
+      return value.trim().replace(/[\s-]/g, "").toLocaleUpperCase();
+    }
+
+    function parseMappings(value) {
+      const reports = [];
+      const reportNames = new Set();
+      for (const [index, rawLine] of value.split(/\r?\n/).entries()) {
+        const line = rawLine.trim();
+        if (!line) continue;
+        const separator = line.indexOf(":");
+        if (separator < 1) {
+          throw new Error(`Rad ${index + 1}: använd formatet Rapportnamn: org.nr, org.nr.`);
+        }
+        const name = line.slice(0, separator).trim();
+        const identifiers = line.slice(separator + 1).split(",")
+          .map(normalizeOrganizationNumber)
+          .filter(Boolean);
+        if (!name || !identifiers.length) {
+          throw new Error(`Rad ${index + 1}: ange ett rapportnamn och minst ett organisationsnummer.`);
+        }
+        const normalizedName = name.toLocaleLowerCase();
+        if (reportNames.has(normalizedName)) {
+          throw new Error(`Rad ${index + 1}: rapportnamnet "${name}" finns redan; lägg numren på samma rad.`);
+        }
+        reportNames.add(normalizedName);
+        reports.push({ name, identifiers: new Set(identifiers) });
+      }
+      if (!reports.length) throw new Error("Ange minst en rapport med organisationsnummer.");
+      return reports;
+    }
+
+    function displayDate(value) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+      return match ? `${match[1]}-${match[2]}-${match[3]}` : value;
+    }
+
+    function makeReportSection(report, rows) {
+      const block = document.createElement("article");
+      block.className = "report-block";
+      const heading = document.createElement("div");
+      heading.className = "report-head";
+      const title = document.createElement("h2");
+      title.textContent = report.name;
+      const meta = document.createElement("div");
+      meta.className = "report-meta";
+      meta.textContent = `${rows.length} transaktion(er) · Org.nr: ${[...report.identifiers].join(", ")}`;
+      heading.append(title, meta);
+
+      const wrap = document.createElement("div");
+      wrap.className = "table-wrap";
+      const table = document.createElement("table");
+      const colgroup = document.createElement("colgroup");
+      for (const className of ["date", "amount", "direction", "account", "counterparty", "reference", "source"]) {
+        const col = document.createElement("col");
+        col.className = className;
+        colgroup.append(col);
+      }
+      const thead = document.createElement("thead");
+      const header = document.createElement("tr");
+      for (const text of ["Datum", "Belopp", "Typ (D/K)", "Konto/BG", "Motpart", "Referens / meddelande", "Källfil"]) {
+        const cell = document.createElement("th");
+        cell.textContent = text;
+        header.append(cell);
+      }
+      thead.append(header);
+      const tbody = document.createElement("tbody");
+      if (!rows.length) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 7;
+        cell.textContent = "Inga transaktioner matchade för denna rapport och månad.";
+        row.append(cell);
+        tbody.append(row);
+      } else {
+        for (const transaction of rows) {
+          const row = document.createElement("tr");
+          const values = [
+            displayDate(transaction.date),
+            transaction.amount,
+            transaction.direction,
+            transaction.account,
+            transaction.counterparty,
+            transaction.reference,
+            transaction.source,
+          ];
+          values.forEach((value, index) => {
+            const cell = document.createElement("td");
+            cell.textContent = value || "—";
+            if (index === 0) cell.className = "date";
+            if (index === 1) cell.className = "amount";
+            if (index === 3) cell.className = "account";
+            if (index === 4) cell.className = "counterparty";
+            if (index === 5) cell.className = "reference";
+            row.append(cell);
+          });
+          tbody.append(row);
+        }
+      }
+      table.append(colgroup, thead, tbody);
+      wrap.append(table);
+      block.append(heading, wrap);
+      return block;
+    }
+
+    async function loadFile(file) {
+      loadedFile = null;
+      transactions = [];
+      reportSection.hidden = true;
+      createButton.disabled = true;
+      reportList.replaceChildren();
+      if (!file) {
+        fileInfo.textContent = "Ingen fil vald.";
+        setStatus("Välj en CAMT-fil för att börja.");
+        return;
+      }
+      try {
+        const xml = new DOMParser().parseFromString(await file.text(), "application/xml");
+        transactions = extractTransactions(xml, file.name);
+        loadedFile = file;
+        const identifiers = [...new Set(transactions.flatMap((item) => item.organizationNumbers))].sort();
+        fileInfo.textContent =
+          `${file.name} · ${transactions.length} transaktion(er) · Organisationsnummer hittade: ${identifiers.length ? identifiers.join(", ") : "inga"}`;
+        createButton.disabled = false;
+        setStatus("Filen är inläst. Ange vilka organisationsnummer som ska ingå i respektive rapport.", "success");
+      } catch (error) {
+        console.error("[CAMT054 split] Unable to read CAMT file", { fileName: file.name, error });
+        fileInfo.textContent = file.name;
+        setStatus(`Kunde inte läsa CAMT-filen: ${error.message}`, "error");
+      }
+    }
+
+    function createReports() {
+      if (!loadedFile) {
+        setStatus("Välj och läs in en CAMT-fil först.", "error");
+        return;
+      }
+      let reports;
+      try {
+        reports = parseMappings(mappingInput.value);
+      } catch (error) {
+        setStatus(error.message, "error");
+        return;
+      }
+      reportList.replaceChildren();
+      let matchedCount = 0;
+      for (const report of reports) {
+        const rows = transactions.filter((transaction) =>
+          transaction.organizationNumbers.some((identifier) =>
+            report.identifiers.has(normalizeOrganizationNumber(identifier))))
+          .sort((left, right) =>
+            (left.date || "9999-99-99").localeCompare(right.date || "9999-99-99") ||
+            left.source.localeCompare(right.source, "sv"));
+        matchedCount += rows.length;
+        reportList.append(makeReportSection(report, rows));
+      }
+      document.title = "CAMT.054 – delade rapporter";
+      reportSection.hidden = false;
+      reportSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      setStatus(
+        `${reports.length} rapport(er) skapade från hela filen; ${matchedCount} transaktionsträff(ar). Kontrollera avsnitten och skriv ut/spara som PDF.`,
+        matchedCount ? "success" : "",
+      );
+    }
+
+    fileInput.addEventListener("change", () => loadFile(fileInput.files[0]));
+    mappingInput.addEventListener("input", () => {
+      reportSection.hidden = true;
+    });
+    createButton.addEventListener("click", createReports);
+    document.getElementById("print-report").addEventListener("click", () => window.print());
+  </script>
+</body>
+</html>
